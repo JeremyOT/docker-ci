@@ -116,13 +116,30 @@ func (m *Monitor) handleCommandRequest(writer http.ResponseWriter, request *http
 	path := request.URL.Path
 	method := request.Method
 	log.Println("Received command request", method, path)
-	switch path {
-	case "/started":
+	pathComponents := strings.Split(path, "/")
+	switch pathComponents[1] {
+	case "started":
 		m.WaitForStart()
 		m.writeResponse(writer, map[string]bool{"started": true}, 200)
+	case "tasks":
+		if len(pathComponents) == 2 {
+			tasks := m.Tasks()
+			task_ids := make([]string, 0, len(tasks))
+			for _, task := range tasks {
+				task_ids = append(task_ids, task.ID())
+			}
+			m.writeResponse(writer, map[string]interface{}{"tasks": task_ids}, 200)
+		} else {
+			task := m.tasks[pathComponents[2]]
+			if task == nil {
+				m.writeResponse(writer, map[string]interface{}{"error": "not found"}, 404)
+			} else {
+				m.writeResponse(writer, map[string]interface{}{"task": task}, 200)
+			}
+		}
 	default:
 		log.Println("Invalid command")
-		m.writeResponse(writer, map[string]string{"command": path, "method": method, "message": "invalid command"}, 400)
+		m.writeResponse(writer, map[string]string{"error": "invalid command"}, 400)
 	}
 }
 

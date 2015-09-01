@@ -2,7 +2,6 @@ package task
 
 import (
 	"bufio"
-	"fmt"
 	"io"
 	"log"
 	"strings"
@@ -30,7 +29,9 @@ type ContainerUpdateTask struct {
 }
 
 func (t *ContainerUpdateTask) ID() string {
-	return fmt.Sprintf("Container-%s", t.Container.Image)
+	taskID := strings.Replace(t.Container.Image, "/", "-", -1)
+	taskID = strings.Replace(t.Container.Image, ":", "_", -1)
+	return taskID
 }
 
 func (t *ContainerUpdateTask) SetClient(client dockerclient.Client, auth *dockerclient.AuthConfig) {
@@ -63,14 +64,17 @@ func (t *ContainerUpdateTask) Run() (err error) {
 }
 
 func (t *ContainerUpdateTask) Pull() (err error) {
-	log.Println("Pulling", t.Container.Image)
-	ntag := strings.LastIndex(t.Container.Image, ":")
-	nslash := strings.LastIndex(t.Container.Image, "/")
+	imageID := t.Container.Image
+	ntag := strings.LastIndex(imageID, ":")
+	nslash := strings.LastIndex(imageID, "/")
 	tag := "latest"
 	if ntag > 0 && ntag > nslash {
-		tag = t.Container.Image[ntag+1:]
+		tag = imageID[ntag+1:]
+		imageID = imageID[:ntag]
 	}
-	return t.client.PullImage(t.Container.Image+":"+tag, t.auth)
+	imageID = imageID + ":" + tag
+	log.Println("Pulling", imageID)
+	return t.client.PullImage(imageID, t.auth)
 }
 
 func (t *ContainerUpdateTask) CurrentImage() (image *dockerclient.ImageInfo, err error) {
