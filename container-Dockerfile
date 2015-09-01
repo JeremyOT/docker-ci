@@ -2,6 +2,6 @@ FROM busybox:ubuntu-14.04
 MAINTAINER jeremyot@gmail.com
 
 ADD docker-ci /usr/bin/docker-ci
-VOLUME ["/var/logs"]
+VOLUME ["/var/log"]
 ENTRYPOINT ["/usr/bin/docker-ci"]
-CMD ["-log-file=/var/logs/docker-ci.log"]
+CMD ["-log-file=/var/log/docker-ci.log"]
