@@ -59,7 +59,7 @@ func (t *ContainerUpdateTask) Run() (err error) {
 		log.Println("No change for", t.Container.Image, newImage.Id)
 		return
 	}
-	err = t.Restart(newImage.Id, newImage.Created.String())
+	err = t.Restart(newImage.Id, newImage.Created.Format(time.RFC3339))
 	return
 }
 
