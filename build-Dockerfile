@@ -1,0 +1,11 @@
+FROM ubuntu:14.04
+MAINTAINER jeremyot@gmail.com
+
+RUN apt-get update && apt-get install build-essential curl -y; \
+    curl https://storage.googleapis.com/golang/go1.5.linux-amd64.tar.gz > /tmp/go1.5.linux-amd64.tar.gz && tar -C /usr/local -xzf /tmp/go1.5.linux-amd64.tar.gz && rm /tmp/go1.5.linux-amd64.tar.gz;
+RUN curl -sSL https://get.docker.com/ | sh
+
+COPY container-Dockerfile /var/products/Dockerfile
+ADD . /var/go/src/github.com/JeremyOT/docker-ci
+RUN export GO15VENDOREXPERIMENT=1; export GOPATH=/var/go; GOROOT=/usr/local/go; export PATH=$PATH:$GOROOT/bin; go build -o /var/products/docker-ci github.com/JeremyOT/docker-ci
+CMD docker build -t jeremyot/docker-ci /var/products
