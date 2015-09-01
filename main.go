@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -51,6 +52,7 @@ func main() {
 		defer logFile.Close()
 		log.SetOutput(logFile)
 		log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
+		fmt.Println("Logging to", config.logFile)
 	}
 
 	m, err := monitor.New(config.monitorConfig)
