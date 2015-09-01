@@ -55,7 +55,7 @@ func (t *ContainerUpdateTask) Run() (err error) {
 		return
 	}
 	if initialImage != nil && newImage.Id == initialImage.Id {
-		//log.Println("No change for", t.Container.Image, newImage.Id)
+		log.Println("No change for", t.Container.Image, newImage.Id)
 		return
 	}
 	err = t.Restart(newImage.Id, newImage.Created.String())

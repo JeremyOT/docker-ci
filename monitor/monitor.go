@@ -1,10 +1,12 @@
 package monitor
 
 import (
-	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"log"
+	"net"
+	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -17,24 +19,26 @@ const (
 )
 
 type Config struct {
-	PollInterval  time.Duration `flag:"poll-interval,How often to attempt to pull updated containers,5m"`
-	URL           string        `flag:"docker-url,The url for the docker daemon,unix:///var/run/docker.sock"`
-	ListenAddress string        `flag:"listen-address,The address to listen for commands on"`
-	AuthConfig    string        `flag:"auth-config,A base64 encoded JSON object containing credentials for pulling from the registry"`
+	PollInterval   time.Duration `flag:"poll-interval,How often to attempt to pull updated containers,5m"`
+	URL            string        `flag:"docker-url,The url for the docker daemon,unix:///var/run/docker.sock"`
+	CommandAddress string        `flag:"command-address,The address to listen for commands on,127.0.0.1:5858"`
+	AuthConfig     string        `flag:"auth-config,A base64 encoded JSON object containing credentials for pulling from the registry"`
 }
 
 type Monitor struct {
-	taskLock     sync.RWMutex
-	pollInterval time.Duration
-	client       dockerclient.Client
-	authConfig   *dockerclient.AuthConfig
-	quit         chan struct{}
-	wait         chan struct{}
-	trigger      chan struct{}
-	tasks        map[string]task.Task
+	taskLock       sync.RWMutex
+	config         *Config
+	client         dockerclient.Client
+	authConfig     *dockerclient.AuthConfig
+	commandAddress net.Addr
+	quit           chan struct{}
+	wait           chan struct{}
+	trigger        chan struct{}
+	started        chan struct{}
+	tasks          map[string]task.Task
 }
 
-func NewWithConfig(config *Config) (*Monitor, error) {
+func New(config *Config) (m *Monitor, err error) {
 	var authConfig *dockerclient.AuthConfig
 	if config.AuthConfig != "" {
 		authJson, err := base64.StdEncoding.DecodeString(config.AuthConfig)
@@ -47,19 +51,15 @@ func NewWithConfig(config *Config) (*Monitor, error) {
 		}
 		authConfig = &auth
 	}
-	return New(config.PollInterval, config.URL, authConfig, nil)
-}
-
-func New(pollInterval time.Duration, url string, authConfig *dockerclient.AuthConfig, tlsConfig *tls.Config) (m *Monitor, err error) {
-	client, err := dockerclient.NewDockerClient(url, tlsConfig)
+	client, err := dockerclient.NewDockerClient(config.URL, nil)
 	if err != nil {
 		return
 	}
 	m = &Monitor{
-		pollInterval: pollInterval,
-		client:       client,
-		tasks:        make(map[string]task.Task, 10),
-		authConfig:   authConfig,
+		config:     config,
+		client:     client,
+		tasks:      make(map[string]task.Task, 10),
+		authConfig: authConfig,
 	}
 	return
 }
@@ -93,13 +93,51 @@ func (m *Monitor) PerformTasks() {
 	}
 }
 
-func (m *Monitor) run() {
-	log.Println("Starting monitor. Polling every", m.pollInterval)
+func (m *Monitor) writeResponse(writer http.ResponseWriter, data interface{}, status int) {
+	if data != nil {
+		writer.Header().Set("Content-Type", "application/json")
+	}
+	writer.WriteHeader(status)
+	if data != nil {
+		body, err := json.Marshal(data)
+		if err != nil {
+			log.Println("Error marshalling response:", err)
+			return
+		}
+		_, err = writer.Write(body)
+		if err != nil {
+			log.Println("Error writing response:", err)
+			return
+		}
+	}
+}
+
+func (m *Monitor) handleCommandRequest(writer http.ResponseWriter, request *http.Request) {
+	path := request.URL.Path
+	method := request.Method
+	log.Println("Received command request", method, path)
+	switch path {
+	case "/started":
+		m.WaitForStart()
+		m.writeResponse(writer, map[string]bool{"started": true}, 200)
+	default:
+		log.Println("Invalid command")
+		m.writeResponse(writer, map[string]string{"command": path, "method": method, "message": "invalid command"}, 400)
+	}
+}
+
+func (m *Monitor) run(listener net.Listener) {
+	defer listener.Close()
+	server := &http.Server{Handler: http.HandlerFunc(m.handleCommandRequest)}
+	go server.Serve(listener)
+	log.Println("Starting monitor. Polling every", m.config.PollInterval)
 	if m.authConfig != nil {
 		log.Println("Authenticated for user:", m.authConfig.Username)
 	}
+	log.Println("Listening for commands on", m.commandAddress)
 	m.PerformTasks()
-	ticker := time.Tick(m.pollInterval)
+	close(m.started)
+	ticker := time.Tick(m.config.PollInterval)
 	for {
 		select {
 		case <-m.quit:
@@ -112,14 +150,36 @@ func (m *Monitor) run() {
 	}
 }
 
-func (m *Monitor) Start() {
+func (m *Monitor) CommandAddress() net.Addr {
+	return m.CommandAddress()
+}
+
+func (m *Monitor) Start() (err error) {
 	m.quit = make(chan struct{})
 	m.wait = make(chan struct{})
-	go m.run()
+	m.trigger = make(chan struct{})
+	m.started = make(chan struct{})
+	network := "tcp"
+	commandAddress := m.config.CommandAddress
+	if strings.HasPrefix(commandAddress, "unix://") {
+		network = "unix"
+		commandAddress = commandAddress[7:]
+	}
+	listener, err := net.Listen(network, commandAddress)
+	if err != nil {
+		return
+	}
+	m.commandAddress = listener.Addr()
+	go m.run(listener)
+	return
 }
 
 func (m *Monitor) Wait() {
 	<-m.wait
+}
+
+func (m *Monitor) WaitForStart() {
+	<-m.started
 }
 
 func (m *Monitor) Stop() {

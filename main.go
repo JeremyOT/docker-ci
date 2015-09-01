@@ -53,7 +53,7 @@ func main() {
 		log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 	}
 
-	m, err := monitor.NewWithConfig(config.monitorConfig)
+	m, err := monitor.New(config.monitorConfig)
 	if err != nil {
 		log.Panicln("Error creating monitor:", err)
 	}
