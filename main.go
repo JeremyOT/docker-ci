@@ -75,7 +75,7 @@ func main() {
 
 	if config.taskEtcdUrl != "" {
 		client := etcd.NewClient([]string{config.taskEtcdUrl})
-		response, err := client.Get(config.taskEtcdKey, false, true)
+		response, err := client.Get(config.taskEtcdKey, true, true)
 		if err != nil {
 			log.Panicln("Error reading task defs:", err)
 		}
