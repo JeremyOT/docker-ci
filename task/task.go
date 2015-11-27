@@ -2,8 +2,10 @@ package task
 
 import (
 	"bufio"
+	"crypto/sha256"
 	"io"
 	"log"
+	"net/http"
 	"strings"
 	"time"
 
@@ -20,12 +22,20 @@ type Task interface {
 }
 
 type ContainerUpdateTask struct {
-	ShutdownSignal  string
+	// ShutdownSignal allows a signal other than the default (KILL) to be used when shutting down containers.
+	ShutdownSignal string
+	// CleanContainers causes all unused images to be removed after a container is removed
 	CleanContainers bool
-	KeepVolumes     bool
-	Container       *dockerclient.ContainerConfig
-	client          dockerclient.Client
-	auth            *dockerclient.AuthConfig
+	// KeepVolumes allows volumes to be kept when the container is removed
+	KeepVolumes bool
+	// RestartTriggerURL, if provided, will be monitored for changes and the container will restart if a change is detected
+	// even if the source has not been updated. This may be useful e.g. for restarting a container on config change.
+	RestartTriggerURL string
+	// Container is a dockerclient container object that will be used to create and start a container
+	Container          *dockerclient.ContainerConfig
+	client             dockerclient.Client
+	auth               *dockerclient.AuthConfig
+	restartTriggerHash string
 }
 
 func (t *ContainerUpdateTask) ID() string {
@@ -37,6 +47,31 @@ func (t *ContainerUpdateTask) ID() string {
 func (t *ContainerUpdateTask) SetClient(client dockerclient.Client, auth *dockerclient.AuthConfig) {
 	t.client = client
 	t.auth = auth
+}
+
+func (t *ContainerUpdateTask) NeedsRestart() (needsRestart bool) {
+	if t.RestartTriggerURL == "" {
+		return
+	}
+	resp, err := http.Get(t.RestartTriggerURL)
+	if err != nil {
+		log.Printf("Failed to retrieve restart trigger (%s): %s", t.RestartTriggerURL, err)
+		return
+	}
+	defer resp.Body.Close()
+
+	sha := sha256.New()
+	if _, err := io.Copy(sha, resp.Body); err != nil {
+		log.Printf("Failed to read restart trigger (%s): %s", t.RestartTriggerURL, err)
+		return
+	}
+	data := make([]byte, 0, sha256.Size)
+	newHash := string(sha.Sum(data))
+	if newHash != t.restartTriggerHash {
+		needsRestart = true
+	}
+	t.restartTriggerHash = newHash
+	return
 }
 
 func (t *ContainerUpdateTask) Run() (err error) {
@@ -55,7 +90,8 @@ func (t *ContainerUpdateTask) Run() (err error) {
 		log.Println("Failed to read new image:", err)
 		return
 	}
-	if initialImage != nil && newImage.Id == initialImage.Id {
+	needsRestart := t.NeedsRestart()
+	if initialImage != nil && newImage.Id == initialImage.Id && !needsRestart {
 		log.Println("No change for", t.Container.Image, newImage.Id)
 		return
 	}
