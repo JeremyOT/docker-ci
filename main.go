@@ -15,6 +15,10 @@ import (
 	"github.com/coreos/go-etcd/etcd"
 )
 
+const (
+	EtcdToken = "{{etcd-url}}"
+)
+
 func monitorSignal(m *monitor.Monitor, sigChan <-chan os.Signal) {
 	for sig := range sigChan {
 		if sig == syscall.SIGQUIT {
@@ -86,6 +90,7 @@ func main() {
 			if err := json.Unmarshal([]byte(taskNode.Value), &task); err != nil {
 				log.Panicln("Error reading task defs:", err, "\n", taskNode.Value)
 			}
+			task.ReplaceRestartURLToken(EtcdToken, config.taskEtcdUrl)
 			tasks = append(tasks, &task)
 		}
 	}

@@ -44,6 +44,13 @@ func (t *ContainerUpdateTask) ID() string {
 	return taskID
 }
 
+func (t *ContainerUpdateTask) ReplaceRestartURLToken(token, value string) {
+	if t.RestartTriggerURL == "" {
+		return
+	}
+	t.RestartTriggerURL = strings.Replace(t.RestartTriggerURL, token, value, -1)
+}
+
 func (t *ContainerUpdateTask) SetClient(client dockerclient.Client, auth *dockerclient.AuthConfig) {
 	t.client = client
 	t.auth = auth
