@@ -40,7 +40,7 @@ type ContainerUpdateTask struct {
 
 func (t *ContainerUpdateTask) ID() string {
 	taskID := strings.Replace(t.Container.Image, "/", "-", -1)
-	taskID = strings.Replace(t.Container.Image, ":", "_", -1)
+	taskID = strings.Replace(taskID, ":", "_", -1)
 	return taskID
 }
 
