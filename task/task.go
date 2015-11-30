@@ -125,6 +125,7 @@ func (t *ContainerUpdateTask) CurrentImage() (image *dockerclient.ImageInfo, err
 }
 
 func (t *ContainerUpdateTask) Restart(imageID, created string) (err error) {
+	log.Println("Restarting", t.Container.Image)
 	currentContainers, err := t.client.ListContainers(true, false, "")
 	if err != nil {
 		return
@@ -146,10 +147,12 @@ func (t *ContainerUpdateTask) Restart(imageID, created string) (err error) {
 	}
 	env = append(env, "DOCKER_IMAGE_CREATED="+created, "DOCKER_IMAGE_ID="+imageID)
 	t.Container.Env = env
+	log.Println("Creating container", t.Container.Image)
 	containerID, err := t.client.CreateContainer(t.Container, "")
 	if err != nil {
 		return
 	}
+	log.Println("Starting container", containerID)
 	err = t.client.StartContainer(containerID, &t.Container.HostConfig)
 	if err != nil {
 		return
@@ -159,6 +162,7 @@ func (t *ContainerUpdateTask) Restart(imageID, created string) (err error) {
 		shutdownSignal = DefaultShutdownSignal
 	}
 	for _, c := range containers {
+		log.Println("Stopping container", c.Id, "with", shutdownSignal)
 		err = t.client.KillContainer(c.Id, shutdownSignal)
 		if err != nil {
 			return
