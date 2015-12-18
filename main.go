@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -12,11 +11,6 @@ import (
 	"github.com/JeremyOT/docker-ci/monitor"
 	"github.com/JeremyOT/docker-ci/task"
 	"github.com/JeremyOT/structflag"
-	"github.com/coreos/go-etcd/etcd"
-)
-
-const (
-	EtcdToken = "{{etcd-url}}"
 )
 
 func monitorSignal(m *monitor.Monitor, sigChan <-chan os.Signal) {
@@ -35,7 +29,7 @@ func main() {
 	config := struct {
 		monitorConfig *monitor.Config
 		taskFile      string
-		taskEtcdUrl   string
+		taskEtcdURL   string
 		taskEtcdKey   string
 		logFile       string
 	}{
@@ -43,7 +37,7 @@ func main() {
 	}
 	structflag.StructToFlags("", config.monitorConfig)
 	flag.StringVar(&config.taskFile, "task-def", "", "The path to a JSON file containing an array of task definitions.")
-	flag.StringVar(&config.taskEtcdUrl, "etcd-url", "", "The address of an etcd cluster to pull task-defs from.")
+	flag.StringVar(&config.taskEtcdURL, "etcd-url", "", "The address of an etcd cluster to pull task-defs from.")
 	flag.StringVar(&config.taskEtcdKey, "etcd-key", "", "The path to the directory in etcd where task-defs are stored. It is expected that each task def is stored as the value in its own node in the etcd cluster.")
 	flag.StringVar(&config.logFile, "log-file", "", "The path to use for logging.")
 	flag.Parse()
@@ -64,39 +58,18 @@ func main() {
 		log.Panicln("Error creating monitor:", err)
 	}
 
-	var tasks []*task.ContainerUpdateTask
+	sources := make([]task.Source, 0)
+
 	if config.taskFile != "" {
-		taskDefFile, err := os.Open(config.taskFile)
-		if err != nil {
-			log.Panicln("Error reading task defs:", err)
-		}
-		decoder := json.NewDecoder(taskDefFile)
-		if err = decoder.Decode(&tasks); err != nil {
-			log.Panicln("Error reading task defs:", err)
-		}
-		taskDefFile.Close()
-	} else {
-		tasks = make([]*task.ContainerUpdateTask, 0)
+		sources = append(sources, task.NewFileSource(config.taskFile))
 	}
 
-	if config.taskEtcdUrl != "" {
-		client := etcd.NewClient([]string{config.taskEtcdUrl})
-		response, err := client.Get(config.taskEtcdKey, true, true)
-		if err != nil {
-			log.Panicln("Error reading task defs:", err)
-		}
-		for _, taskNode := range response.Node.Nodes {
-			var task task.ContainerUpdateTask
-			if err := json.Unmarshal([]byte(taskNode.Value), &task); err != nil {
-				log.Panicln("Error reading task defs:", err, "\n", taskNode.Value)
-			}
-			task.ReplaceRestartURLToken(EtcdToken, config.taskEtcdUrl)
-			tasks = append(tasks, &task)
-		}
+	if config.taskEtcdURL != "" {
+		sources = append(sources, task.NewEtcdSource(config.taskEtcdURL, config.taskEtcdKey))
 	}
 
-	for _, task := range tasks {
-		m.AddTask(task)
+	for _, source := range sources {
+		m.AddTaskSource(source)
 	}
 	sigChan := make(chan os.Signal)
 	signal.Notify(sigChan, syscall.SIGKILL, syscall.SIGTERM, syscall.SIGQUIT)

@@ -3,6 +3,7 @@ package task
 import (
 	"bufio"
 	"crypto/sha256"
+	"encoding/json"
 	"io"
 	"log"
 	"net/http"
@@ -17,8 +18,9 @@ const (
 )
 
 type Task interface {
-	Run() (err error)
+	Run(referenceTask Task) (err error)
 	ID() string
+	Hash() string
 }
 
 type ContainerUpdateTask struct {
@@ -32,16 +34,33 @@ type ContainerUpdateTask struct {
 	// even if the source has not been updated. This may be useful e.g. for restarting a container on config change.
 	RestartTriggerURL string
 	// Container is a dockerclient container object that will be used to create and start a container
-	Container          *dockerclient.ContainerConfig
-	client             dockerclient.Client
-	auth               *dockerclient.AuthConfig
-	restartTriggerHash string
+	Container *dockerclient.ContainerConfig
+
+	client             dockerclient.Client      `json:"-"`
+	auth               *dockerclient.AuthConfig `json:"-"`
+	restartTriggerHash string                   `json:"-"`
 }
 
 func (t *ContainerUpdateTask) ID() string {
 	taskID := strings.Replace(t.Container.Image, "/", "-", -1)
 	taskID = strings.Replace(taskID, ":", "_", -1)
 	return taskID
+}
+
+func (t *ContainerUpdateTask) Hash() string {
+	data, err := json.Marshal(t)
+	if err != nil {
+		return ""
+	}
+	hash := sha256.Sum256(data)
+	return string(hash[:])
+}
+
+func (t *ContainerUpdateTask) Update(n *ContainerUpdateTask) {
+	t.ShutdownSignal = n.ShutdownSignal
+	t.CleanContainers = n.CleanContainers
+	t.KeepVolumes = n.KeepVolumes
+	t.RestartTriggerURL = n.RestartTriggerURL
 }
 
 func (t *ContainerUpdateTask) ReplaceRestartURLToken(token, value string) {
@@ -81,7 +100,7 @@ func (t *ContainerUpdateTask) NeedsRestart() (needsRestart bool) {
 	return
 }
 
-func (t *ContainerUpdateTask) Run() (err error) {
+func (t *ContainerUpdateTask) Run(referenceTask Task) (err error) {
 	initialImage, err := t.CurrentImage()
 	if err != nil && err.Error() != "Not found" {
 		log.Println("Failed to read current image:", err)
@@ -98,6 +117,12 @@ func (t *ContainerUpdateTask) Run() (err error) {
 		return
 	}
 	needsRestart := t.NeedsRestart()
+	if referenceTask != nil {
+		if t.Hash() != referenceTask.Hash() {
+			needsRestart = true
+			t.Update(referenceTask.(*ContainerUpdateTask))
+		}
+	}
 	if initialImage != nil && newImage.Id == initialImage.Id && !needsRestart {
 		log.Println("No change for", t.Container.Image, newImage.Id)
 		return

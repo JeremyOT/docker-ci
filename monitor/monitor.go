@@ -31,11 +31,13 @@ type Monitor struct {
 	client         dockerclient.Client
 	authConfig     *dockerclient.AuthConfig
 	commandAddress net.Addr
+	staticSource   *task.StaticSource
 	quit           chan struct{}
 	wait           chan struct{}
 	trigger        chan struct{}
 	started        chan struct{}
 	tasks          map[string]task.Task
+	sources        []task.Source
 }
 
 func New(config *Config) (m *Monitor, err error) {
@@ -56,12 +58,17 @@ func New(config *Config) (m *Monitor, err error) {
 		return
 	}
 	m = &Monitor{
-		config:     config,
-		client:     client,
-		tasks:      make(map[string]task.Task, 10),
-		authConfig: authConfig,
+		config:       config,
+		client:       client,
+		tasks:        make(map[string]task.Task, 10),
+		authConfig:   authConfig,
+		staticSource: task.NewStaticSource(),
 	}
 	return
+}
+
+func (m *Monitor) AddTaskSource(source task.Source) {
+	m.sources = append(m.sources, source)
 }
 
 func (m *Monitor) Tasks() (tasks []task.Task) {
@@ -74,21 +81,45 @@ func (m *Monitor) Tasks() (tasks []task.Task) {
 	return
 }
 
+func (m *Monitor) TaskMap() (tasks map[string]task.Task) {
+	m.taskLock.RLock()
+	defer m.taskLock.RUnlock()
+	tasks = map[string]task.Task{}
+	for _, t := range m.tasks {
+		tasks[t.ID()] = t
+	}
+	return
+}
+
 func (m *Monitor) AddTask(t task.Task) {
-	m.taskLock.Lock()
-	defer m.taskLock.Unlock()
 	if containerUpdateTask, ok := t.(*task.ContainerUpdateTask); ok {
 		containerUpdateTask.SetClient(m.client, m.authConfig)
+		m.staticSource.AddTask(containerUpdateTask)
 	}
-	m.tasks[t.ID()] = t
 	log.Println("Added task:", t.ID())
 }
 
 func (m *Monitor) PerformTasks() {
-	tasks := m.Tasks()
+	taskMap := m.TaskMap()
+	sources := make([]task.Source, 0, len(m.sources)+1)
+	sources = append(sources, m.staticSource)
+	sources = append(sources, m.sources...)
+	tasks, err := task.AllTasks(sources...)
+	if err != nil {
+		log.Printf("Error querying tasks: %s", err)
+	}
 	for _, t := range tasks {
-		if err := t.Run(); err != nil {
-			log.Printf("Error running task %s: %s", t.ID(), err)
+		if existing, ok := taskMap[t.ID()]; ok {
+			if err := existing.Run(t); err != nil {
+				log.Printf("Error running task %s: %s", t.ID(), err)
+			}
+		} else {
+			m.taskLock.Lock()
+			m.tasks[t.ID()] = t
+			if err := t.Run(nil); err != nil {
+				log.Printf("Error running task %s: %s", t.ID(), err)
+			}
+			m.taskLock.Unlock()
 		}
 	}
 }
@@ -124,11 +155,11 @@ func (m *Monitor) handleCommandRequest(writer http.ResponseWriter, request *http
 	case "tasks":
 		if len(pathComponents) == 2 {
 			tasks := m.Tasks()
-			task_ids := make([]string, 0, len(tasks))
+			taskIDs := make([]string, 0, len(tasks))
 			for _, task := range tasks {
-				task_ids = append(task_ids, task.ID())
+				taskIDs = append(taskIDs, task.ID())
 			}
-			m.writeResponse(writer, map[string]interface{}{"tasks": task_ids}, 200)
+			m.writeResponse(writer, map[string]interface{}{"tasks": taskIDs}, 200)
 		} else {
 			task := m.tasks[pathComponents[2]]
 			if task == nil {
