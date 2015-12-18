@@ -115,6 +115,7 @@ func (m *Monitor) PerformTasks() {
 			}
 		} else {
 			m.taskLock.Lock()
+			t.SetClient(m.client, m.authConfig)
 			m.tasks[t.ID()] = t
 			if err := t.Run(nil); err != nil {
 				log.Printf("Error running task %s: %s", t.ID(), err)
