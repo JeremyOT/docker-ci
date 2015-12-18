@@ -61,6 +61,7 @@ func (t *ContainerUpdateTask) Update(n *ContainerUpdateTask) {
 	t.CleanContainers = n.CleanContainers
 	t.KeepVolumes = n.KeepVolumes
 	t.RestartTriggerURL = n.RestartTriggerURL
+	t.Container = n.Container
 }
 
 func (t *ContainerUpdateTask) ReplaceRestartURLToken(token, value string) {
