@@ -128,7 +128,7 @@ func (t *ContainerUpdateTask) Run(referenceTask Task) (err error) {
 		log.Println("No change for", t.Container.Image, newImage.Id)
 		return
 	}
-	err = t.Restart(newImage.Id, newImage.Created.Format(time.RFC3339))
+	err = t.Restart(newImage.Id, newImage.Created.Format(time.RFC3339), initialImage.Id)
 	return
 }
 
@@ -150,7 +150,7 @@ func (t *ContainerUpdateTask) CurrentImage() (image *dockerclient.ImageInfo, err
 	return t.client.InspectImage(t.Container.Image)
 }
 
-func (t *ContainerUpdateTask) Restart(imageID, created string) (err error) {
+func (t *ContainerUpdateTask) Restart(imageID, created, previousImageID string) (err error) {
 	log.Println("Restarting", t.Container.Image)
 	currentContainers, err := t.client.ListContainers(true, false, "")
 	if err != nil {
@@ -158,7 +158,7 @@ func (t *ContainerUpdateTask) Restart(imageID, created string) (err error) {
 	}
 	containers := make([]dockerclient.Container, 0)
 	for _, c := range currentContainers {
-		if c.Image == t.Container.Image {
+		if c.Image == previousImageID || c.Image == t.Container.Image {
 			containers = append(containers, c)
 		}
 	}
