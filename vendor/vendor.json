@@ -18,6 +18,11 @@
 			"revisionTime": "2014-12-29T13:46:29-08:00"
 		},
 		{
+			"path": "github.com/docker/go-units",
+			"revision": "5d2041e26a699eaca682e2ea41c8f891e1060444",
+			"revisionTime": "2016-01-25T09:48:45-08:00"
+		},
+		{
 			"path": "github.com/samalba/dockerclient",
 			"revision": "91d7393ff85980ba3a8966405871a3d446ca28f2",
 			"revisionTime": "2016-04-14T10:47:13-07:00"

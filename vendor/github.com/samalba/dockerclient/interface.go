@@ -47,6 +47,7 @@ type Client interface {
 	LoadImage(reader io.Reader) error
 	RemoveContainer(id string, force, volumes bool) error
 	ListImages(all bool) ([]*Image, error)
+	ListImagesFiltered(all bool, filters map[string][]string) ([]*Image, error)
 	RemoveImage(name string, force bool) ([]*ImageDelete, error)
 	SearchImages(query, registry string, auth *AuthConfig) ([]ImageSearch, error)
 	PauseContainer(name string) error

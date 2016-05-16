@@ -739,6 +739,27 @@ func (client *DockerClient) ListImages(all bool) ([]*Image, error) {
 	return images, nil
 }
 
+func (client *DockerClient) ListImagesFiltered(all bool, filters map[string][]string) ([]*Image, error) {
+	argAll := 0
+	if all {
+		argAll = 1
+	}
+	filterData, err := json.Marshal(filters)
+	if err != nil {
+		return nil, err
+	}
+	uri := fmt.Sprintf("/%s/images/json?all=%d&filters=%s", APIVersion, argAll, string(filterData))
+	data, err := client.doRequest("GET", uri, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	var images []*Image
+	if err := json.Unmarshal(data, &images); err != nil {
+		return nil, err
+	}
+	return images, nil
+}
+
 func (client *DockerClient) RemoveImage(name string, force bool) ([]*ImageDelete, error) {
 	argForce := 0
 	if force {

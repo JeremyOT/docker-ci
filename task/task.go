@@ -174,7 +174,7 @@ func (t *ContainerUpdateTask) Restart(imageID, created, previousImageID string) 
 	env = append(env, "DOCKER_IMAGE_CREATED="+created, "DOCKER_IMAGE_ID="+imageID)
 	t.Container.Env = env
 	log.Println("Creating container", t.Container.Image)
-	containerID, err := t.client.CreateContainer(t.Container, "")
+	containerID, err := t.client.CreateContainer(t.Container, "", t.auth)
 	if err != nil {
 		return
 	}
