@@ -103,7 +103,7 @@ func (t *ContainerUpdateTask) NeedsRestart() (needsRestart bool) {
 
 func (t *ContainerUpdateTask) Run(referenceTask Task) (err error) {
 	initialImage, err := t.CurrentImage()
-	if err != nil && err.Error() != "Not found" {
+	if err != nil && err != dockerclient.ErrImageNotFound && err != dockerclient.ErrNotFound {
 		log.Println("Failed to read current image:", err)
 		return
 	}
