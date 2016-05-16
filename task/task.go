@@ -128,7 +128,11 @@ func (t *ContainerUpdateTask) Run(referenceTask Task) (err error) {
 		log.Println("No change for", t.Container.Image, newImage.Id)
 		return
 	}
-	err = t.Restart(newImage.Id, newImage.Created.Format(time.RFC3339), initialImage.Id)
+	var initialImageId string
+	if initialImage != nil {
+		initialImageId = initialImage.Id
+	}
+	err = t.Restart(newImage.Id, newImage.Created.Format(time.RFC3339), initialImageId)
 	return
 }
 
